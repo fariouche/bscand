@@ -1,0 +1,169 @@
+--- a/frontend/Makefile.am	2015-09-20 13:55:38.000000000 +0200
++++ b/frontend/Makefile.am	2017-06-05 18:28:28.902683717 +0200
+@@ -22,7 +22,7 @@
+ 
+ saned_SOURCES = saned.c
+ saned_LDADD = ../backend/libsane.la ../sanei/libsanei.la ../lib/liblib.la \
+-             ../lib/libfelib.la @SYSLOG_LIBS@ @SYSTEMD_LIBS@
++             ../lib/libfelib.la -pthread @SYSLOG_LIBS@ @SYSTEMD_LIBS@
+ 
+ test_SOURCES = test.c
+ test_LDADD = ../lib/liblib.la ../lib/libfelib.la ../backend/libsane.la
+--- a/frontend/Makefile.in	2015-10-04 15:24:33.000000000 +0200
++++ b/frontend/Makefile.in	2017-06-05 19:55:57.844312479 +0200
+@@ -365,7 +365,7 @@
+ 
+ saned_SOURCES = saned.c
+ saned_LDADD = ../backend/libsane.la ../sanei/libsanei.la ../lib/liblib.la \
+-             ../lib/libfelib.la @SYSLOG_LIBS@ @SYSTEMD_LIBS@
++             ../lib/libfelib.la -pthread @SYSLOG_LIBS@ @SYSTEMD_LIBS@
+ 
+ test_SOURCES = test.c
+ test_LDADD = ../lib/liblib.la ../lib/libfelib.la ../backend/libsane.la
+--- a/frontend/saned.c	2013-08-25 23:22:58.000000000 +0200
++++ b/frontend/saned.c	2017-06-07 20:28:05.024136458 +0200
+@@ -49,6 +49,7 @@
+ #include <assert.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <semaphore.h>
+ #include <netdb.h>
+ #include <signal.h>
+ #include <stdio.h>
+@@ -236,6 +237,8 @@
+   u_int scanning:1;		/* are we scanning? */
+   u_int docancel:1;		/* cancel the current scan */
+   SANE_Handle handle;		/* backends handle */
++	SANE_String name;
++	sem_t* lock;
+ }
+ Handle;
+ 
+@@ -295,6 +298,7 @@
+ #define SANED_RUN_DEBUG  1
+ #define SANED_RUN_ALONE  2
+ 
++static void close_handle (int h);
+ 
+ #define DBG_ERR  1
+ #define DBG_WARN 2
+@@ -328,7 +332,6 @@
+ #endif
+ }
+ 
+-
+ static void
+ reset_watchdog (void)
+ {
+@@ -467,8 +470,7 @@
+   running = 1;
+ 
+   for (i = 0; i < num_handles; ++i)
+-    if (handle[i].inuse)
+-      sane_close (handle[i].handle);
++    close_handle (i);
+ 
+   sane_exit ();
+   sanei_w_exit (&wire);
+@@ -498,6 +500,7 @@
+ 	      last_handle_checked = h;
+ 	      memset (handle + h, 0, sizeof (handle[0]));
+ 	      handle[h].inuse = 1;
++				handle[h].lock = SEM_FAILED;
+ 	      return h;
+ 	    }
+ 	  ++h;
+@@ -526,6 +529,13 @@
+   if (h >= 0 && handle[h].inuse)
+     {
+       sane_close (handle[h].handle);
++			if(handle[h].lock != SEM_FAILED)
++  		{
++    		sem_post(handle[h].lock);
++	  		sem_close(handle[h].lock);
++				/*sem_unlink(handle[h].name);*/
++	  		handle[h].lock = SEM_FAILED;
++  		}
+       handle[h].inuse = 0;
+     }
+ }
+@@ -1844,6 +1854,7 @@
+ 	SANE_Open_Reply reply;
+ 	SANE_Handle be_handle;
+ 	SANE_String name, resource;
++	sem_t* sem = SEM_FAILED;
+ 
+ 	sanei_w_string (w, &name);
+ 	if (w->status)
+@@ -1909,13 +1920,36 @@
+ 	  }
+ 	else
+ 	  {
++			
+ 	    DBG (DBG_MSG, "process_request: access to resource `%s' granted\n", 
+ 		 resource);
+ 	    free (resource);
+ 	    memset (&reply, 0, sizeof (reply));	/* avoid leaking bits */
+-	    reply.status = sane_open (name, &be_handle);
++
++	 		reply.status = SANE_STATUS_DEVICE_BUSY;
++			sem = sem_open(name, O_CREAT, 0700, 1);
++			if(sem == SEM_FAILED)
++				DBG (DBG_ERR, "process_request: cannot open or create semaphore `%s' - %s\n",name, strerror(errno));
++  		else
++			{
++				int s;
++				struct timespec ts;
++				clock_gettime(CLOCK_REALTIME, &ts);
++				ts.tv_sec += 2;
++
++				while((s = sem_timedwait(sem, &ts)) == -1 && errno == EINTR)
++	        continue;
++				if (s == -1)
++				{
++					DBG (DBG_WARN, "process_request: sem error - %s\n", strerror(errno));
++				}
++				else
++					reply.status = sane_open (name, &be_handle);
++	 		}
++			
++
+ 	    DBG (DBG_MSG, "process_request: sane_open returned: %s\n", 
+-		 sane_strstatus (reply.status));
++		 	sane_strstatus (reply.status));
+ 	  }
+ 
+ 	if (reply.status == SANE_STATUS_GOOD)
+@@ -1925,11 +1959,20 @@
+ 	      reply.status = SANE_STATUS_NO_MEM;
+ 	    else
+ 	      {
+-		handle[h].handle = be_handle;
+-		reply.handle = h;
++					handle[h].handle = be_handle;
++					handle[h].name = strdup(name);
++	  			handle[h].lock = sem;
++					reply.handle = h;
+ 	      }
+ 	  }
+-
++		else
++		{
++			if(sem != SEM_FAILED)
++			{
++				sem_close(sem);
++				/*sem_unlink(name);*/
++			}
++		}
+ 	can_authorize = 0;
+ 
+ 	sanei_w_reply (w, (WireCodecFunc) sanei_w_open_reply, &reply);
+@@ -1943,6 +1986,8 @@
+ 
+ 	h = decode_handle (w, "close");
+ 	close_handle (h);
++	free(handle[h].name);
++	handle[h].name = NULL;
+ 	sanei_w_reply (w, (WireCodecFunc) sanei_w_word, &ack);
+       }
+       break;
