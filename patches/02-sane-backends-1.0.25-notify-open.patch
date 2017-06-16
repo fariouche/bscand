@@ -26,6 +26,6 @@
 +			free(tmp_name);
 +			sem_close(sem);
 +
- 			sem = sem_open(name, O_CREAT, 0700, 1);
+ 			sem = sem_open(name, O_CREAT, 0660, 1);
  			if(sem == SEM_FAILED)
  				DBG (DBG_ERR, "process_request: cannot open or create semaphore `%s' - %s\n",name, strerror(errno));
