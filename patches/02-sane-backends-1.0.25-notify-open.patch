@@ -18,7 +18,7 @@
 +			tmp_name = malloc(strlen(name)+strlen(".open")+1);
 +			strcpy(tmp_name, name);
 +			strcat(tmp_name, ".open");
-+			sem = sem_open(tmp_name, O_CREAT, 0700, 0);
++			sem = sem_open(tmp_name, O_CREAT, 0660, 0);
 +			if(sem == SEM_FAILED)
 +				DBG (DBG_ERR, "process_request: cannot open or create semaphore `%s' - %s\n",tmp_name, strerror(errno));
 +			else

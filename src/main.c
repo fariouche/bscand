@@ -560,8 +560,8 @@ static void scan_buttons(const char* devname)
 					printf("device should be free now, opening...\n");
 					status = sane_open(devname, &device);
 					sem_trywait(sem);/* decrement our count*/
-  				if(status != SANE_STATUS_GOOD)
-  				{
+					if(status != SANE_STATUS_GOOD)
+					{
 						fprintf(stderr, "canot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
 						continue;
 					}
