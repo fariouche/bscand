@@ -25,7 +25,9 @@
 #include <sane/saneopts.h>
 #include <cups/cups.h>
 #include <fcntl.h>
+#include <time.h>
 #include <semaphore.h>
+#include <libconfig.h>
 #include "process.h"
 #include "stiff.h"
 
@@ -41,8 +43,28 @@ typedef struct
 }
 Image;
 
-static SANE_Handle device = NULL;
+enum e_btn_action
+{
+  BTN_ACTION_NONE,
+  BTN_ACTION_SCAN,
+  BTN_ACTION_APPEND,
+  BTN_ACTION_PDF,
+  BTN_ACTION_PRINT
+};
 
+struct s_btn_action
+{
+  const char* name;
+  enum e_btn_action action;
+  int resolution;
+  const char* mode;
+  const char* folder;
+  int btn_index;
+};
+#define MAX_BTN 16
+static struct s_btn_action btn_list[MAX_BTN] = {0};
+static SANE_Handle device = NULL;
+static int reset = 0;
 static int scan_resolution_idx = -1;
 static int scan_mode_idx = -1;
 
@@ -105,6 +127,7 @@ static int print_pdf(const char* pdf)
 	int job_id;
 	cups_option_t	*options = NULL;
 	const char	*files[1];
+	int num_dests = 0;
 
 	if(access(pdf, R_OK) != 0)
 	{
@@ -115,7 +138,8 @@ static int print_pdf(const char* pdf)
 
 /*	const char* printer = "Canon_LBP7660C";
 	dest = cupsGetNamedDest(CUPS_HTTP_DEFAULT, printer, instance);*/
-	dest = cupsGetNamedDest(NULL, NULL, NULL);
+	dest = cupsGetNamedDest(CUPS_HTTP_DEFAULT, NULL, NULL);
+//lpoptions -d Canon_LBP7660C
 
 	if(dest != NULL)
 	{
@@ -128,8 +152,19 @@ static int print_pdf(const char* pdf)
 	else if (cupsLastError() == IPP_STATUS_ERROR_BAD_REQUEST ||
 		       cupsLastError() == IPP_STATUS_ERROR_VERSION_NOT_SUPPORTED)
 	{
-		fprintf(stderr, "cannot find printer\n");
+		fprintf(stderr, "cannot find printer (%d - %s)\n", cupsLastError(), cupsLastErrorString());
 		return 1;
+	}
+	else
+	{
+		printf("no default printer found, getting available printer\n");
+		num_dests = cupsGetDests(&dest);
+		if(num_dests == 0)
+		{
+			fprintf(stderr, "No printers found\n");
+			return 1;
+		}
+		printf("Using the first printer, '%s'\n", dest->name);
 	}
 	files[0] = pdf;
 	job_id = cupsPrintFiles(dest->name, 1, files, "bscand job", num_options, options);
@@ -140,6 +175,7 @@ static int print_pdf(const char* pdf)
 	}
 
 	cupsFreeOptions(num_options, options);
+	cupsFreeDests(num_dests, dest);
 
 	return 0;
 }
@@ -379,61 +415,114 @@ ret_err:
 		free(buffer);
 	if(ofp)
 		fclose(ofp);
-	//if(ret)
-		sane_cancel(device);
-/*
-  if(!sane_get_option_descriptor(device, 0))
+
+	sane_cancel(device);
+
+	return ret;
+}
+
+static struct s_btn_action* find_button(const char* name)
+{
+	struct s_btn_action* btn;
+	int i;
+
+	for(i=0; i< MAX_BTN; i++)
 	{
-	  fprintf (stderr, "unable to get option count descriptor\n");
+		if(btn_list[i].name == NULL)
+			break;
+		if(!strcmp(name, btn_list[i].name))
+			return btn_list+i;
 	}
 
-	status = sane_control_option (device, 0, SANE_ACTION_GET_VALUE, &info, 0);
-	if (status != SANE_STATUS_GOOD)
-	{
-		fprintf (stderr, "Could not get value for option 0: %s\n", sane_strstatus(status));
-	}
-*/
-	return ret;
+	fprintf(stderr, "Buton '%s' not found\n", name);
+	return NULL;
 }
 
 static void do_action(const char* button_name)
 {
-	
-	if(strcmp(button_name, "file") == 0)
-	{
-		do_scan("/tmp/bscand.out.tiff", 300, SANE_VALUE_SCAN_MODE_COLOR);
-		append_to_tiff("/tmp/bscand.out.tiff", "/tmp/bscand_tmp.out.tiff");
-	}
-	else if(strcmp(button_name, "extra") == 0)
-	{
-		if(access("/tmp/bscand_tmp.out.tiff", F_OK) == 0)
-		{
-			append_to_pdf("/tmp/bscand_tmp.out.tiff", "/tmp/scan.pdf");
-			unlink("/tmp/bscand_tmp.out.tiff");
-		}
-	}
-	else if(strcmp(button_name, "copy") == 0)
-	{
-		if(access("/tmp/scan.pdf", F_OK))
-		{
-			do_scan("/tmp/bscand.out.tiff", 300, SANE_VALUE_SCAN_MODE_COLOR /*SANE_VALUE_SCAN_MODE_GRAY*/);
-			append_to_pdf("/tmp/bscand.out.tiff", "/tmp/scan.pdf");
-		}
-		print_pdf("/tmp/scan.pdf");
-		unlink("/tmp/bscand_tmp.out.tiff");
-		unlink("/tmp/scan.pdf");
-	}
-	else if(strcmp(button_name, "email") == 0)
-	{
-	}
-	else if(strcmp(button_name, "scan") == 0)
-	{
-	}
-	else
-	{
-		printf("No action for button '%s'\n", button_name);
-	}
+	struct s_btn_action* btn;
 
+	btn = find_button(button_name);
+	if(!btn)
+		return;
+
+	switch(btn->action)
+	{
+		case BTN_ACTION_APPEND:
+			do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
+			append_to_tiff("/tmp/bscand.out.tiff", "/tmp/bscand_tmp.out.tiff");
+		break;
+
+		case BTN_ACTION_PDF:
+			if(access("/tmp/bscand_tmp.out.tiff", F_OK) == 0)
+			{
+				append_to_pdf("/tmp/bscand_tmp.out.tiff", "/tmp/scan.pdf");
+				unlink("/tmp/bscand_tmp.out.tiff");
+			}
+		break;
+
+		case BTN_ACTION_PRINT:
+			if(access("/tmp/scan.pdf", F_OK))
+			{
+				do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
+				append_to_pdf("/tmp/bscand.out.tiff", "/tmp/scan.pdf");
+			}
+			print_pdf("/tmp/scan.pdf");
+			unlink("/tmp/bscand_tmp.out.tiff");
+			unlink("/tmp/scan.pdf");
+		break;
+
+		case BTN_ACTION_SCAN:
+		{
+			char* file_name;
+			struct tm* t;
+			time_t tmp;
+			int i;
+			int ret;
+
+			if(btn->folder == NULL)
+			{
+				fprintf(stderr, "folder is not specified in the config file, ignoring action\n");
+				break;
+			}
+
+			t = localtime(&tmp);
+
+			ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d.tiff", btn->folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+			if(ret < 0)
+			{
+				fprintf(stderr, "OUt of memory\n");
+				break;
+			}
+			for(i=0; i<10; i++)
+			{
+				if(access(file_name, F_OK))
+					break;
+
+				free(file_name);
+				ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d(%d).tiff", btn->folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, i);
+				if(ret < 0)
+				{
+					fprintf(stderr, "OUt of memory\n");
+					break;
+				}
+			}
+			if(i == 11)
+			{
+				fprintf(stderr, "Cannot find a file name... aborting\n");
+				free(file_name);
+				break;
+			}
+			do_scan(file_name, btn->resolution, btn->mode);
+			free(file_name);
+		}
+		break;
+
+		case BTN_ACTION_NONE:
+		default:
+			printf("No action for button '%s'\n", button_name);
+		break;
+	}
 }
 
 static void scan_buttons(const char* devname)
@@ -481,7 +570,7 @@ static void scan_buttons(const char* devname)
 		opt = sane_get_option_descriptor(device, i);
 		if (opt == NULL)
 		{
-			fprintf (stderr, "Could not get option descriptor for option %d\n",i);
+			fprintf (stderr, "Could not get option descriptor for option %d, skipping\n",i);
 			//sane_close(device);
 			//return;
 			continue;
@@ -490,6 +579,16 @@ static void scan_buttons(const char* devname)
 		{
 			printf("found button '%s'\n", opt->name);
 			num_buttons++;
+			for(b=0; b<MAX_BTN; b++)
+			{
+				if(btn_list[b].name == NULL)
+					break;
+				if(!strcmp(opt->name, btn_list[b].name))
+				{
+					btn_list[b].btn_index = i;
+					break;
+				}
+			}
 		}
 		else if((opt->type == SANE_TYPE_STRING) &&
 						(strcmp (opt->name, SANE_NAME_SCAN_MODE) == 0))
@@ -529,10 +628,18 @@ static void scan_buttons(const char* devname)
 
 	tmp_name = malloc(strlen(devname)+strlen(".open")+1);
 	strcpy(tmp_name, devname+strlen("net:[::1]:"));
-//sem_unlink(tmp_name);
+	if(reset)
+	{
+		printf("reseting access...\n");
+		sem_unlink(tmp_name);
+	}
 	strcat(tmp_name, ".open");
-//sem_unlink(tmp_name);
-//exit(0);
+	if(reset)
+	{
+		sem_unlink(tmp_name);
+		printf("Access reset done. You may need to restart saned\n");
+		return;
+	}
 	sem = sem_open(tmp_name, O_CREAT, 0700, 0);
 	if(sem == SEM_FAILED)
 		fprintf(stderr, "process_request: cannot open or create semaphore `%s' - %s\n",tmp_name, strerror(errno));
@@ -644,12 +751,148 @@ static void sighandler(int signum)
 	_exit (0);
 }
 
+int parse_config_file(const char* cfg_file)
+{
+  config_t cfg;
+  int status;
+  const char* str;
+  int ret = 0;
+  config_setting_t *btn;
+  config_setting_t *elem;
+  int len;
+  int val;
+
+  config_init(&cfg);
+	status = config_read_file(&cfg, cfg_file);
+  if(status == CONFIG_FALSE)
+  {
+    fprintf(stderr, "Cannot open config file '%s' (%s)\n", cfg_file, config_error_text(&cfg));
+    return 1;
+  }
+  if(config_lookup_string(&cfg, "version", &str) == CONFIG_FALSE)
+  {
+    fprintf(stderr, "No version field found\n");
+    ret = 1;
+		goto error_exit;
+  }
+  if(strcmp(str, "1.0"))
+  {
+    fprintf(stderr, "Expected version 1.0 (got '%s')\n", str);
+		ret = 1;
+    goto error_exit;
+  }
+  btn = config_lookup(&cfg, "buttons");
+  if(!btn)
+  {
+    fprintf(stderr, "no buttons configuration found\n");
+    ret = 1;
+    goto error_exit;
+  }
+  len = config_setting_length(btn);
+  if(len == 0)
+  {
+    fprintf(stderr, "no buttons actions specified\n");
+    ret = 1;
+    goto error_exit;
+  }
+  for(;len>0; len--)
+  {
+    elem = config_setting_get_elem(btn, len-1);
+    if(elem == NULL)
+    {
+      fprintf(stderr, "Error: %s\n", config_error_text(&cfg));
+      ret = 1;
+      goto error_exit;
+    }
+
+    if(config_setting_lookup_string(elem, "name", &str) == CONFIG_FALSE)
+    {
+      fprintf(stderr, "No button name specified\n");
+      ret = 1;
+      goto error_exit;
+    }
+    btn_list[len-1].name = strdup(str);
+    printf("Button '%s':\n", str);
+    if(config_setting_lookup_string(elem, "action", &str) == CONFIG_FALSE)
+    {
+      fprintf(stderr, "No button action specified\n");
+      ret = 1;
+      goto error_exit;
+    }
+    printf("  Action: %s\n", str);
+    if(!strcmp(str, "print"))
+    {
+      btn_list[len-1].action = BTN_ACTION_PRINT;
+    }
+    else if(!strcmp(str, "none"))
+    {
+      btn_list[len-1].action = BTN_ACTION_NONE;
+    }
+    else if(!strcmp(str, "scan"))
+    {
+      btn_list[len-1].action = BTN_ACTION_SCAN;
+    }
+    else if(!strcmp(str, "pdf"))
+    {
+      btn_list[len-1].action = BTN_ACTION_PDF;
+    }
+    else if(!strcmp(str, "append"))
+    {
+      btn_list[len-1].action = BTN_ACTION_APPEND;
+    }
+    else
+    {
+      fprintf(stderr, "Unknown action '%s'\n", str);
+    }
+
+    str = NULL;
+		if(config_setting_lookup_string(elem, "mode", &str) == CONFIG_FALSE)
+    {
+			str = "gray";
+    }
+	  if(!strcmp(str, "color"))
+		{
+			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_COLOR;
+		}
+		if(!strcmp(str, "gray"))
+    {
+			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_GRAY;
+    }
+    else
+    {
+      fprintf(stderr, "Unknown mode '%s'\n", str);
+    }
+
+		if(config_setting_lookup_int(elem, "resolution", &val) == CONFIG_FALSE)
+    {
+			val = 300;
+    }
+	  btn_list[len-1].resolution = val;
+    
+		str = NULL;
+		config_setting_lookup_string(elem, "folder", &str);
+    if(str)
+      btn_list[len-1].folder = strdup(str);
+		if((btn_list[len-1].action == BTN_ACTION_SCAN) && (str == NULL))
+		{
+			fprintf(stderr, "folder option must be set when using action='scan'\n");
+			ret = 1;
+			goto error_exit;
+		}
+  }
+
+error_exit:
+  config_destroy(&cfg);
+  return ret;
+}
+
 int main(int argc, char** argv)
 {
 	SANE_Word be_version_code;
 	SANE_Status status;
 	const SANE_Device **device_list;
 	int i;
+  const char* cfg_file;
 
 	printf("starting...\n");
 
@@ -661,6 +904,19 @@ int main(int argc, char** argv)
 #endif
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);
+  cfg_file = "/etc/bscand.cfg";
+  if(argc > 2)
+  {
+    if(!strcmp(argv[1], "-c"))
+      cfg_file = argv[2];
+		else if(!strcmp(argv[1], "--reset"))
+    {
+		}
+  }
+
+  i = parse_config_file(cfg_file);
+  if(i)
+    return i;
 
 	sane_init(&be_version_code, auth_callback);
 	if(status != SANE_STATUS_GOOD)

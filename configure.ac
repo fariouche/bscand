@@ -4,7 +4,7 @@ AM_INIT_AUTOMAKE
 
 AC_CHECK_LIB([sane], [sane_init])
 AC_CHECK_LIB([cups], [cupsPrintFiles])
-
+PKG_CHECK_MODULES([LIBCONFIG], [libconfig])
 
 AC_PROG_CC
 
