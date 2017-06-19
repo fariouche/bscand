@@ -1,11 +1,7 @@
-{
-  "language": "c",
-  "group": "stable",
-  "dist": "precise",
-  "os": "linux",
-}
+language: c
+dist: precise
+os: linux
 
 before_install:
   - sudo apt-get install -y libconfig-dev
   - autoreconf -vfi
-
