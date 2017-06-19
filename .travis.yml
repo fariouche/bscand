@@ -2,7 +2,8 @@
   "language": "c",
   "group": "stable",
   "dist": "precise",
-  "os": "linux"
+  "os": "linux",
+  "before_script": "autoreconf -vfi"
 }
 
 
