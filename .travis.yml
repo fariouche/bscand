@@ -4,4 +4,5 @@ os: linux
 
 before_install:
   - sudo apt-get install -y libconfig-dev
+  - sudo apt-get install -y libsane-dev
   - autoreconf -vfi
