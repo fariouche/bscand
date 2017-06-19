@@ -3,7 +3,9 @@
   "group": "stable",
   "dist": "precise",
   "os": "linux",
-  "before_script": "autoreconf -vfi"
 }
 
+before_install:
+  - sudo apt-get install -y libconfig-dev
+  - autoreconf -vfi
 
