@@ -3,6 +3,7 @@ Simple sane button scanner
 --------------------------
 
 **scanbd** is mainly a fork of the saned frontend. I needed the latest backends and scnabd didn't include it yet. Plus the fact that the configuration was not easy.
+
 I've seen too late an other project, **insaned**.  This one does not support multiple conccurrent access to the scanner and does not use the net backend. Concurrent access is not easy when not using the net backend.
 
 
@@ -24,7 +25,7 @@ Build:
 * make install
 
 
-THen just modify the config file to suite your need (possible actions: Append to tiif, create pdf, print/copy, scan to folder)
+Then just modify the config file to suite your need (possible actions: Append to tiif, create pdf, print/copy, scan to folder)
 
 Then launch the daemon:
 
