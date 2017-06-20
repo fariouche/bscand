@@ -7,3 +7,7 @@ before_install:
   - sudo apt-get install -y libsane-dev
   - sudo apt-get install -y libcups2-dev
   - autoreconf -vfi
+
+script:
+  - ./configure
+  - make
