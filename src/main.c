@@ -760,7 +760,7 @@ int parse_config_file(const char* cfg_file)
   config_setting_t *btn;
   config_setting_t *elem;
   int len;
-  long int val;
+  int val;
 
   config_init(&cfg);
 	status = config_read_file(&cfg, cfg_file);
