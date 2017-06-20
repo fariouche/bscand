@@ -1,9 +1,9 @@
 language: c
-dist: precise
+dist: trusty
 os: linux
 
 before_install:
-  - sudo apt-get install -y libconfig9-dev
+  - sudo apt-get install -y libconfig-dev
   - sudo apt-get install -y libsane-dev
   - sudo apt-get install -y libcups2-dev
   - autoreconf -vfi

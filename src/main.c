@@ -149,12 +149,12 @@ static int print_pdf(const char* pdf)
 		    num_options = cupsAddOption(dest->options[j].name, dest->options[j].value, num_options, &options);
 		}
 	}
-	else if (cupsLastError() == IPP_STATUS_ERROR_BAD_REQUEST ||
+	/*else if (cupsLastError() == IPP_STATUS_ERROR_BAD_REQUEST ||
 		       cupsLastError() == IPP_STATUS_ERROR_VERSION_NOT_SUPPORTED)
 	{
 		fprintf(stderr, "cannot find printer (%d - %s)\n", cupsLastError(), cupsLastErrorString());
 		return 1;
-	}
+	}*/
 	else
 	{
 		printf("no default printer found, getting available printer\n");
@@ -760,7 +760,7 @@ int parse_config_file(const char* cfg_file)
   config_setting_t *btn;
   config_setting_t *elem;
   int len;
-  int val;
+  long int val;
 
   config_init(&cfg);
 	status = config_read_file(&cfg, cfg_file);
