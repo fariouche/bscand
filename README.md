@@ -19,6 +19,10 @@ Build:
 ------
 
 * Apply the two patches to sane backend source code (sane backends 1.0.25)
+* You need:
+  * libcups2-dev
+  * libconfig-dev
+  * libsane-dev
 * execute ``autoreconf -vfi``
 * ./configure --prefix=/usr
 * make
