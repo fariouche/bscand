@@ -33,6 +33,12 @@
 
 #define STRIP_HEIGHT	256
 
+#ifdef ENABLE_IPV6
+#define NET_PREFIX "net:[::1]:"
+#else
+#define NET_PREFIX "net:127.0.0.1:"
+#endif
+
 typedef struct
 {
   uint8_t *data;
@@ -627,7 +633,7 @@ static void scan_buttons(const char* devname)
 	memset(buttons, 0, num_buttons * sizeof(*buttons));
 
 	tmp_name = malloc(strlen(devname)+strlen(".open")+1);
-	strcpy(tmp_name, devname+strlen("net:[::1]:"));
+	strcpy(tmp_name, devname+strlen(NET_PREFIX));
 	if(reset)
 	{
 		printf("reseting access...\n");
@@ -938,14 +944,14 @@ int main(int argc, char** argv)
 		/*printf("device `%s' is a %s %s %s\n",
 			        device_list[i]->name, device_list[i]->vendor,
 			        device_list[i]->model, device_list[i]->type);*/
-		if(strncmp("net:[::1]", device_list[i]->name, 9) == 0)
+		if(strncmp(NET_PREFIX, device_list[i]->name, strlen(NET_PREFIX)) == 0)
 			break;
 	}
 
 	if(device_list[i] == NULL)
 	{
 
-		fprintf(stderr, "network sane server over ipv6 not found\n");
+		fprintf(stderr, "network sane server over not found\n");
 		sane_exit();
 		return -1;
 	}

@@ -35,13 +35,20 @@ Then launch the daemon:
 
 bscand -c /etc/bscand.cfg &
 
-It will use the net backend and select the first ipv6 net backend (for now).
+It will use the net backend and select the first ipv6 localhost net backend (if --enable-ipv6 is passed to configure) and if not found, search for an ipv4 localhost saned.
+
+Note:
+
+You will need to enable the net backend.
+- compile sane-backend with the net backend support
+- enable net backend, by creating /etc/sane.d/net.conf and putting inside 127.0.0.1 and ::1
+- test using scanimage -L to see if the net backend is visible.
+
 
 
 TODO:
 -----
 * daemonize option.
-* if no ipv6, use local host ipv4 address.
-* select a different backend is multiple are found.
+* select a different backend if multiple are found.
 
 

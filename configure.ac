@@ -8,4 +8,14 @@ PKG_CHECK_MODULES([LIBCONFIG], [libconfig >= 1.4.9])
 
 AC_PROG_CC
 
+AC_ARG_ENABLE([ipv6],
+    AS_HELP_STRING([--enable-ipv6], [enable ipv6 support]))
+AS_IF(
+      [test "x$enable_ipv6" = "xyes"],
+      [
+       AC_DEFINE([ENABLE_IPV6])
+      ]
+)
+
+
 AC_OUTPUT(Makefile src/Makefile)
