@@ -1,0 +1,154 @@
+--- a/frontend/saned.c	2017-07-25 22:30:12.411539542 +0200
++++ b/frontend/saned.c	2017-07-25 22:31:31.274533964 +0200
+@@ -248,6 +248,7 @@
+ static int debug;
+ static int run_mode;
+ static sem_t* sem = SEM_FAILED;
++static int data_timeout = 4000;
+ static Handle *handle;
+ static union
+ {
+@@ -1757,6 +1758,7 @@
+ 		      DBG (DBG_ERR, "do_scan: write failed (%s)\n",
+ 			   strerror (errno));
+ 		      status = SANE_STATUS_CANCELLED;
++	        handle[h].docancel = 1;
+ 		      break;
+ 		    }
+ 		  bytes_in_buf -= nwritten;
+@@ -1822,13 +1824,19 @@
+ 	{
+ 	  DBG (DBG_MSG,
+ 	       "do_scan: processing RPC request on fd %d\n", w->io.fd);
+-	  process_request (w);
++	  if(process_request (w) < 0)
++	    handle[h].docancel = 1;
++
+ 	  if (handle[h].docancel)
+ 	    break;
+ 	}
+     }
+   while (status == SANE_STATUS_GOOD || bytes_in_buf > 0 || status_dirty);
+   DBG (DBG_MSG, "do_scan: done, status=%s\n", sane_strstatus (status));
++
++	if(handle[h].docancel)
++		sane_cancel (handle[h].handle);
++
+   handle[h].docancel = 0;
+   handle[h].scanning = 0;
+ }
+@@ -2076,7 +2084,7 @@
+     case SANE_NET_START:
+       {
+ 	SANE_Start_Reply reply;
+-	int fd = -1, data_fd;
++	int fd = -1, data_fd = -1;
+ 
+ 	h = decode_handle (w, "start");
+ 	if (h < 0)
+@@ -2101,9 +2109,35 @@
+ 	    char text_addr[64];
+ 	    int len;
+ 	    int error;
++	    struct pollfd fds[1];
++			int ret;
++			
++			fds->fd = fd;
++  		fds->events = POLLIN;
+ 
+-	    DBG (DBG_MSG, "process_request: waiting for data connection\n");
+-	    data_fd = accept (fd, 0, 0);
++	    DBG (DBG_MSG, "process_request: waiting 4s for data connection\n");
++	    if(data_timeout)
++	    {
++	    	while (1)
++	    	{
++      		ret = poll (fds, 1, data_timeout);
++      		if (ret < 0)
++	    		{
++	    			if (errno == EINTR)
++	    				continue;
++	    			else
++	    			{
++	      			DBG (DBG_ERR, "run_standalone: poll failed: %s\n", strerror (errno));
++	    			}
++						break;
++	    		}
++					break;
++	    	}
++	    }
++	    else
++	      ret = 0;
++	    if(ret >= 0)
++		    data_fd = accept (fd, 0, 0);
+ 	    close (fd);
+ 
+ 	    /* Get address of remote host */
+@@ -2143,9 +2177,36 @@
+ 	  {
+ 	    struct sockaddr_in sin;
+ 	    int len;
++	    int ret;
++	    struct pollfd fds[1];
++			
++	    fds->fd = fd;
++	    fds->events = POLLIN;
++
++	    DBG (DBG_MSG, "process_request: waiting 4s for data connection\n");
++	    if(data_timeout)
++	    {
++	    	while (1)
++	    	{
++      		ret = poll (fds, 1, data_timeout);
++      		if (ret < 0)
++	    		{
++	    			if (errno == EINTR)
++	    				continue;
++	    			else
++	    			{
++	      			DBG (DBG_ERR, "run_standalone: poll failed: %s\n", strerror (errno));
++	    			}
++						break;
++	    		}
++					break;
++	    	}
++	    }
++	    else
++	      ret = 0;
++	    if(ret >= 0)
++		    data_fd = accept (fd, 0, 0);
+ 
+-	    DBG (DBG_MSG, "process_request: waiting for data connection\n");
+-	    data_fd = accept (fd, 0, 0);
+ 	    close (fd);
+ 
+ 	    /* Get address of remote host */
+@@ -2756,7 +2817,27 @@
+                   DBG (DBG_INFO, "read_config: data port range: %d - %d\n", data_port_lo, data_port_hi);
+                 }
+             }
+-        }
++            else if(strstr(config_line, "data_connect_timeout") != NULL)
++            {
++              optval = sanei_config_skip_whitespace (++optval);
++              if ((optval != NULL) && (*optval != '\0'))
++              {
++                val = strtol (optval, &endval, 10);
++                if (optval == endval)
++                {
++                  DBG (DBG_ERR, "read_config: invalid value for data_connect_timeout\n");
++                  continue;
++                }
++                else if ((val < 0) || (val > 65535))
++                {
++                  DBG (DBG_ERR, "read_config: data_connect_timeout is invalid\n");
++                  continue;
++                }
++                data_timeout = val;
++                DBG (DBG_INFO, "read_config: data connect timeout: %d\n", data_timeout);
++              }
++            }
++      }
+       fclose (fp);
+       DBG (DBG_INFO, "read_config: done reading config\n");
+     }

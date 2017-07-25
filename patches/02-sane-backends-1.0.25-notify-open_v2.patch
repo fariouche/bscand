@@ -1,0 +1,19 @@
+--- a/frontend/saned.c	2017-07-25 22:27:57.291549098 +0200
++++ b/frontend/saned.c	2017-07-25 22:28:07.210548397 +0200
+@@ -553,6 +553,16 @@
+ {
+ 	int s;
+ 	struct timespec ts;
++	sem_t* sem_tmp = SEM_FAILED;
++	
++	/* first, notify that we want to open the device */
++	
++	sem_tmp = sem_open("saned.open.sem", O_CREAT, 0770, 0);
++	if(sem_tmp == SEM_FAILED)
++		DBG (DBG_ERR, "process_request: cannot open or create semaphore `saned.open.sem' - %s\n", strerror(errno));
++	else
++		sem_post(sem_tmp);/* increment semaphore and that's all */
++	sem_close(sem_tmp);
+ 
+ 	clock_gettime(CLOCK_REALTIME, &ts);
+ 	ts.tv_sec += 2;

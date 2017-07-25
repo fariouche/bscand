@@ -73,6 +73,7 @@ static SANE_Handle device = NULL;
 static int reset = 0;
 static int scan_resolution_idx = -1;
 static int scan_mode_idx = -1;
+static sem_t* sem = SEM_FAILED;
 
 static int append_to_tiff(const char* in_tiff, const char* out_tiff)
 {
@@ -543,16 +544,16 @@ static void scan_buttons(const char* devname)
 	int num_buttons;
   int* buttons;
 	int b;
-	char* tmp_name;
-	sem_t* sem;
 	int ret;
 
 	status = sane_open (devname, &device);
+	sem_trywait(sem); /* decrement our count */
   if(status != SANE_STATUS_GOOD)
   {
-		fprintf(stderr, "canot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
+		fprintf(stderr, "cannot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
 		return;
 	}
+	
 
   opt = sane_get_option_descriptor(device, 0);
   if(!opt)
@@ -632,31 +633,8 @@ static void scan_buttons(const char* devname)
 	buttons = (int*)malloc(num_buttons * sizeof(*buttons));
 	memset(buttons, 0, num_buttons * sizeof(*buttons));
 
-	tmp_name = malloc(strlen(devname)+strlen(".open")+1);
-	strcpy(tmp_name, devname+strlen(NET_PREFIX));
-	if(reset)
-	{
-		printf("reseting access...\n");
-		sem_unlink(tmp_name);
-	}
-	strcat(tmp_name, ".open");
-	if(reset)
-	{
-		sem_unlink(tmp_name);
-		printf("Access reset done. You may need to restart saned\n");
-		return;
-	}
-	sem = sem_open(tmp_name, O_CREAT, 0700, 0);
-	if(sem == SEM_FAILED)
-		fprintf(stderr, "process_request: cannot open or create semaphore `%s' - %s\n",tmp_name, strerror(errno));
-	free(tmp_name);
-
-	sem_trywait(sem);/* decrement our count*/
-
 	while(1)
 	{
-		usleep(200000);
-
 		while(1)
 		{
 			ret = sem_trywait(sem);
@@ -675,7 +653,7 @@ static void scan_buttons(const char* devname)
 					sem_trywait(sem);/* decrement our count*/
 					if(status != SANE_STATUS_GOOD)
 					{
-						fprintf(stderr, "canot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
+						fprintf(stderr, "cannot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
 						continue;
 					}
 					
@@ -686,7 +664,8 @@ static void scan_buttons(const char* devname)
 			{
 				printf("sem ret = %d\n", ret);
 				fprintf(stderr, "someone is accessing the scanner, wait a bit\n");
-				sane_close(device);
+				if(device != NULL)
+					sane_close(device);
 				device = NULL;
 				usleep(2000000);
 				continue;
@@ -721,8 +700,9 @@ static void scan_buttons(const char* devname)
 				b++;
 			}
 		}
+
+		usleep(200000);
 	}
-	sem_close(sem);
 	sane_close(device);
 }
 
@@ -899,6 +879,7 @@ int main(int argc, char** argv)
 	const SANE_Device **device_list;
 	int i;
   const char* cfg_file;
+	/*char* tmp_name;*/
 
 	printf("starting...\n");
 
@@ -911,14 +892,24 @@ int main(int argc, char** argv)
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);
   cfg_file = "/etc/bscand.cfg";
-  if(argc > 2)
+  if(argc >= 2)
   {
     if(!strcmp(argv[1], "-c"))
       cfg_file = argv[2];
 		else if(!strcmp(argv[1], "--reset"))
     {
+      reset = 1;
 		}
   }
+
+	if(reset)
+	{
+		sem_unlink("saned.sem");
+		sem_unlink("saned.open.sem");
+		printf("Access reset done.\n");
+		return 0;
+	}
+
 
   i = parse_config_file(cfg_file);
   if(i)
@@ -930,6 +921,11 @@ int main(int argc, char** argv)
 		fprintf(stderr, "failed to initialize sane (%s)\n", sane_strstatus (status));
 		return -1;
 	}
+
+	sem = sem_open("saned.open.sem", O_CREAT, 0770, 0);
+	if(sem == SEM_FAILED)
+		fprintf(stderr, "cannot open or create semaphore 'saned.open.sem' - %s\n", strerror(errno));
+
 	
 	status = sane_get_devices (&device_list, SANE_FALSE);
 	if (status != SANE_STATUS_GOOD)
@@ -938,6 +934,7 @@ int main(int argc, char** argv)
 		sane_exit();
 		return -1;
 	}
+	sem_trywait(sem);/* decrement our count */
 
 	for (i = 0; device_list[i]; ++i)
 	{
@@ -951,14 +948,18 @@ int main(int argc, char** argv)
 	if(device_list[i] == NULL)
 	{
 
-		fprintf(stderr, "network sane server over not found\n");
+		fprintf(stderr, "network sane server not found\n");
 		sane_exit();
 		return -1;
 	}
 
 	printf("Found device '%s'\n", device_list[i]->name);
 
+
+	
 	scan_buttons(device_list[i]->name);
 	sane_exit();
+	if(sem != SEM_FAILED)
+		sem_close(sem);
 	return 0;
 }

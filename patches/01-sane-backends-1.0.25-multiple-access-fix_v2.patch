@@ -1,0 +1,173 @@
+--- a/frontend/saned.c	2013-08-25 23:22:58.000000000 +0200
++++ b/frontend/saned.c	2017-07-25 22:26:07.066556894 +0200
+@@ -49,6 +49,7 @@
+ #include <assert.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <semaphore.h>
+ #include <netdb.h>
+ #include <signal.h>
+ #include <stdio.h>
+@@ -246,6 +247,7 @@
+ static int num_handles;
+ static int debug;
+ static int run_mode;
++static sem_t* sem = SEM_FAILED;
+ static Handle *handle;
+ static union
+ {
+@@ -295,6 +297,7 @@
+ #define SANED_RUN_DEBUG  1
+ #define SANED_RUN_ALONE  2
+ 
++static void close_handle (int h);
+ 
+ #define DBG_ERR  1
+ #define DBG_WARN 2
+@@ -328,7 +331,6 @@
+ #endif
+ }
+ 
+-
+ static void
+ reset_watchdog (void)
+ {
+@@ -467,8 +469,7 @@
+   running = 1;
+ 
+   for (i = 0; i < num_handles; ++i)
+-    if (handle[i].inuse)
+-      sane_close (handle[i].handle);
++    close_handle (i);
+ 
+   sane_exit ();
+   sanei_w_exit (&wire);
+@@ -526,6 +527,8 @@
+   if (h >= 0 && handle[h].inuse)
+     {
+       sane_close (handle[h].handle);
++		if(sem != SEM_FAILED)
++			sem_post(sem);
+       handle[h].inuse = 0;
+     }
+ }
+@@ -546,6 +549,22 @@
+   return h;
+ }
+ 
++static int access_or_wait_open()
++{
++	int s;
++	struct timespec ts;
++
++	clock_gettime(CLOCK_REALTIME, &ts);
++	ts.tv_sec += 2;
++
++	while((s = sem_timedwait(sem, &ts)) == -1 && errno == EINTR) continue;
++	if (s == -1)
++	{
++		DBG (DBG_WARN, "process_request: sem error - %s\n", strerror(errno));
++	}
++	
++	return s;
++}
+ 
+ 
+ /* Convert a number of bits to an 8-bit bitmask */
+@@ -1810,6 +1829,7 @@
+   SANE_Handle be_handle;
+   SANE_Word h, word;
+   int i;
++  int ret;
+ 
+   DBG (DBG_DBG, "process_request: waiting for request\n");
+   sanei_w_set_dir (w, WIRE_DECODE);
+@@ -1832,10 +1852,18 @@
+       {
+ 	SANE_Get_Devices_Reply reply;
+ 
++	ret = access_or_wait_open();
++	if (ret == -1)
++	{
++		DBG (DBG_WARN, "process_request: sem error - %s\n", strerror(errno));
++	}
++	/* still do the sane_get_devices(). we'll just not see all busy devices */
+ 	reply.status =
+ 	  sane_get_devices ((const SANE_Device ***) &reply.device_list,
+ 			    SANE_TRUE);
+ 	sanei_w_reply (w, (WireCodecFunc) sanei_w_get_devices_reply, &reply);
++	if(ret != -1)
++		sem_post(sem);
+       }
+       break;
+ 
+@@ -1894,7 +1922,7 @@
+ 
+ 	  resource = strdup (device_list[0]->name);
+ 	}
+-
++  ret = -1;
+ 	if (strchr (resource, ':'))
+ 	  *(strchr (resource, ':')) = 0;
+ 
+@@ -1909,13 +1937,21 @@
+ 	  }
+ 	else
+ 	  {
++			
+ 	    DBG (DBG_MSG, "process_request: access to resource `%s' granted\n", 
+ 		 resource);
+ 	    free (resource);
+ 	    memset (&reply, 0, sizeof (reply));	/* avoid leaking bits */
+-	    reply.status = sane_open (name, &be_handle);
++
++	 	reply.status = SANE_STATUS_DEVICE_BUSY;
++		ret = access_or_wait_open();
++		if (ret == -1)
++			DBG (DBG_WARN, "process_request: sem error - %s\n", strerror(errno));
++		else
++			reply.status = sane_open (name, &be_handle);
++
+ 	    DBG (DBG_MSG, "process_request: sane_open returned: %s\n", 
+-		 sane_strstatus (reply.status));
++		 	sane_strstatus (reply.status));
+ 	  }
+ 
+ 	if (reply.status == SANE_STATUS_GOOD)
+@@ -1929,7 +1965,13 @@
+ 		reply.handle = h;
+ 	      }
+ 	  }
+-
++		else
++		{
++			if(ret != -1)
++				sem_post(sem);
++      
++		}
++	
+ 	can_authorize = 0;
+ 
+ 	sanei_w_reply (w, (WireCodecFunc) sanei_w_open_reply, &reply);
+@@ -2276,13 +2318,20 @@
+ 
+   if (init (&wire) < 0)
+     return;
++    
++	sem = sem_open("saned.sem", O_CREAT, 0770, 1);
++	if(sem == SEM_FAILED)
++		DBG (DBG_ERR, "handle_connection: cannot open or create semaphore `saned.sem' - %s\n",strerror(errno));
+ 
+   while (1)
+     {
+       reset_watchdog ();
+       if (process_request (&wire) < 0)
+ 	break;
+-    }  
++    }
++    
++	sem_close(sem);
++	/*sem_unlink(name);*/
+ }
+ 
+ static void
