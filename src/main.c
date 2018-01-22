@@ -445,6 +445,51 @@ static struct s_btn_action* find_button(const char* name)
 	return NULL;
 }
 
+static char* generate_filename(const char* folder, const char* ext)
+{
+	char* file_name;
+	struct tm* t;
+	time_t tmp;
+	int i;
+	int ret;
+
+	if(folder == NULL)
+	{
+		fprintf(stderr, "folder is not specified\n");
+		return NULL;
+	}
+
+	t = localtime(&tmp);
+
+	ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d.%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ext);
+	if(ret < 0)
+	{
+		fprintf(stderr, "Out of memory\n");
+		return NULL;
+	}
+	for(i=0; i<10; i++)
+	{
+		if(access(file_name, F_OK))
+			break;
+
+		free(file_name);
+		ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d(%d).%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, i, ext);
+		if(ret < 0)
+		{
+			fprintf(stderr, "Out of memory\n");
+			return NULL;
+		}
+	}
+	if(i == 11)
+	{
+		fprintf(stderr, "Cannot find a file name... aborting\n");
+		free(file_name);
+		return NULL;
+	}
+	
+	return file_name;
+}
+
 static void do_action(const char* button_name)
 {
 	struct s_btn_action* btn;
@@ -463,7 +508,12 @@ static void do_action(const char* button_name)
 		case BTN_ACTION_PDF:
 			if(access("/tmp/bscand_tmp.out.tiff", F_OK) == 0)
 			{
-				append_to_pdf("/tmp/bscand_tmp.out.tiff", "/tmp/scan.pdf");
+				char* file_name;
+				file_name = generate_filename(btn->folder, "pdf");
+				if(file_name == NULL)
+					break;
+				append_to_pdf("/tmp/bscand_tmp.out.tiff", file_name);
+				free(file_name);
 				unlink("/tmp/bscand_tmp.out.tiff");
 			}
 		break;
@@ -482,44 +532,15 @@ static void do_action(const char* button_name)
 		case BTN_ACTION_SCAN:
 		{
 			char* file_name;
-			struct tm* t;
-			time_t tmp;
-			int i;
-			int ret;
 
 			if(btn->folder == NULL)
 			{
 				fprintf(stderr, "folder is not specified in the config file, ignoring action\n");
 				break;
 			}
-
-			t = localtime(&tmp);
-
-			ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d.tiff", btn->folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-			if(ret < 0)
-			{
-				fprintf(stderr, "OUt of memory\n");
+			file_name = generate_filename(btn->folder, "tiff");
+			if(file_name == NULL)
 				break;
-			}
-			for(i=0; i<10; i++)
-			{
-				if(access(file_name, F_OK))
-					break;
-
-				free(file_name);
-				ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d(%d).tiff", btn->folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, i);
-				if(ret < 0)
-				{
-					fprintf(stderr, "OUt of memory\n");
-					break;
-				}
-			}
-			if(i == 11)
-			{
-				fprintf(stderr, "Cannot find a file name... aborting\n");
-				free(file_name);
-				break;
-			}
 			do_scan(file_name, btn->resolution, btn->mode);
 			free(file_name);
 		}
@@ -542,24 +563,24 @@ static void scan_buttons(const char* devname)
 	SANE_Int num_dev_options;
 	int i;
 	int num_buttons;
-  int* buttons;
+	int* buttons;
 	int b;
 	int ret;
 
 	status = sane_open (devname, &device);
 	sem_trywait(sem); /* decrement our count */
-  if(status != SANE_STATUS_GOOD)
-  {
+	if(status != SANE_STATUS_GOOD)
+	{
 		fprintf(stderr, "cannot open sane device '%s' - (%s)\n", devname, sane_strstatus(status));
 		return;
 	}
 	
 
-  opt = sane_get_option_descriptor(device, 0);
-  if(!opt)
+	opt = sane_get_option_descriptor(device, 0);
+	if(!opt)
 	{
-	  fprintf (stderr, "unable to get option count descriptor\n");
-	  sane_close(device);
+		fprintf (stderr, "unable to get option count descriptor\n");
+		sane_close(device);
 		return;
 	}
 
@@ -567,7 +588,7 @@ static void scan_buttons(const char* devname)
 	if (status != SANE_STATUS_GOOD)
 	{
 		fprintf (stderr, "Could not get value for option 0: %s\n", sane_strstatus(status));
-    sane_close(device);
+		sane_close(device);
 		return;
 	}
 
@@ -598,14 +619,14 @@ static void scan_buttons(const char* devname)
 			}
 		}
 		else if((opt->type == SANE_TYPE_STRING) &&
-						(strcmp (opt->name, SANE_NAME_SCAN_MODE) == 0))
+		        (strcmp (opt->name, SANE_NAME_SCAN_MODE) == 0))
 		{
 			scan_mode_idx = i;
 		}
 		else if((opt->type == SANE_TYPE_FIXED || opt->type == SANE_TYPE_INT) &&
-						(opt->size == sizeof (SANE_Int)) &&
-						(opt->unit == SANE_UNIT_DPI) &&
-						(strcmp (opt->name, SANE_NAME_SCAN_RESOLUTION) == 0))
+		        (opt->size == sizeof (SANE_Int)) &&
+		        (opt->unit == SANE_UNIT_DPI) &&
+		        (strcmp (opt->name, SANE_NAME_SCAN_RESOLUTION) == 0))
 		{
 			scan_resolution_idx = i;
 		}
@@ -739,48 +760,48 @@ static void sighandler(int signum)
 
 int parse_config_file(const char* cfg_file)
 {
-  config_t cfg;
-  int status;
-  const char* str;
-  int ret = 0;
-  config_setting_t *btn;
-  config_setting_t *elem;
-  int len;
-  int val;
+	config_t cfg;
+	int status;
+	const char* str;
+	int ret = 0;
+	config_setting_t *btn;
+	config_setting_t *elem;
+	int len;
+	int val;
 
-  config_init(&cfg);
+	config_init(&cfg);
 	status = config_read_file(&cfg, cfg_file);
-  if(status == CONFIG_FALSE)
-  {
-    fprintf(stderr, "Cannot open config file '%s' (%s)\n", cfg_file, config_error_text(&cfg));
-    return 1;
-  }
-  if(config_lookup_string(&cfg, "version", &str) == CONFIG_FALSE)
-  {
-    fprintf(stderr, "No version field found\n");
-    ret = 1;
-		goto error_exit;
-  }
-  if(strcmp(str, "1.0"))
-  {
-    fprintf(stderr, "Expected version 1.0 (got '%s')\n", str);
+	if(status == CONFIG_FALSE)
+	{
+		fprintf(stderr, "Cannot open config file '%s' (%s)\n", cfg_file, config_error_text(&cfg));
+		return 1;
+	}
+	if(config_lookup_string(&cfg, "version", &str) == CONFIG_FALSE)
+	{
+		fprintf(stderr, "No version field found\n");
 		ret = 1;
-    goto error_exit;
-  }
-  btn = config_lookup(&cfg, "buttons");
-  if(!btn)
-  {
-    fprintf(stderr, "no buttons configuration found\n");
-    ret = 1;
-    goto error_exit;
-  }
-  len = config_setting_length(btn);
-  if(len == 0)
-  {
-    fprintf(stderr, "no buttons actions specified\n");
-    ret = 1;
-    goto error_exit;
-  }
+		goto error_exit;
+	}
+	if(strcmp(str, "1.0"))
+	{
+		fprintf(stderr, "Expected version 1.0 (got '%s')\n", str);
+		ret = 1;
+		goto error_exit;
+	}
+	btn = config_lookup(&cfg, "buttons");
+	if(!btn)
+	{
+		fprintf(stderr, "no buttons configuration found\n");
+		ret = 1;
+		goto error_exit;
+	}
+	len = config_setting_length(btn);
+	if(len == 0)
+	{
+		fprintf(stderr, "no buttons actions specified\n");
+		ret = 1;
+		goto error_exit;
+	}
   for(;len>0; len--)
   {
     elem = config_setting_get_elem(btn, len-1);
@@ -878,7 +899,7 @@ int main(int argc, char** argv)
 	SANE_Status status;
 	const SANE_Device **device_list;
 	int i;
-  const char* cfg_file;
+	const char* cfg_file;
 	/*char* tmp_name;*/
 
 	printf("starting...\n");
@@ -891,16 +912,14 @@ int main(int argc, char** argv)
 #endif
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);
-  cfg_file = "/etc/bscand.cfg";
-  if(argc >= 2)
-  {
-    if(!strcmp(argv[1], "-c"))
-      cfg_file = argv[2];
+	cfg_file = "/etc/bscand.cfg";
+	if(argc >= 2)
+	{
+		if(!strcmp(argv[1], "-c"))
+			cfg_file = argv[2];
 		else if(!strcmp(argv[1], "--reset"))
-    {
-      reset = 1;
-		}
-  }
+			reset = 1;
+	}
 
 	if(reset)
 	{
@@ -911,9 +930,9 @@ int main(int argc, char** argv)
 	}
 
 
-  i = parse_config_file(cfg_file);
-  if(i)
-    return i;
+	i = parse_config_file(cfg_file);
+	if(i)
+		return i;
 
 	sane_init(&be_version_code, auth_callback);
 	if(status != SANE_STATUS_GOOD)
