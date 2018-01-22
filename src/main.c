@@ -41,31 +41,31 @@
 
 typedef struct
 {
-  uint8_t *data;
-  int width;    /*WARNING: this is in bytes, get pixel width from param*/
-  int height;
-  int x;
-  int y;
+	uint8_t *data;
+	int width;    /*WARNING: this is in bytes, get pixel width from param*/
+	int height;
+	int x;
+	int y;
 }
 Image;
 
 enum e_btn_action
 {
-  BTN_ACTION_NONE,
-  BTN_ACTION_SCAN,
-  BTN_ACTION_APPEND,
-  BTN_ACTION_PDF,
-  BTN_ACTION_PRINT
+	BTN_ACTION_NONE,
+	BTN_ACTION_SCAN,
+	BTN_ACTION_APPEND,
+	BTN_ACTION_PDF,
+	BTN_ACTION_PRINT
 };
 
 struct s_btn_action
 {
-  const char* name;
-  enum e_btn_action action;
-  int resolution;
-  const char* mode;
-  const char* folder;
-  int btn_index;
+	const char* name;
+	enum e_btn_action action;
+	int resolution;
+	const char* mode;
+	const char* folder;
+	int btn_index;
 };
 #define MAX_BTN 16
 static struct s_btn_action btn_list[MAX_BTN] = {0};
@@ -152,8 +152,8 @@ static int print_pdf(const char* pdf)
 	{
 		for (j = 0; j < dest->num_options; j++)
 		{
-		  if(cupsGetOption(dest->options[j].name, num_options, options) == NULL)
-		    num_options = cupsAddOption(dest->options[j].name, dest->options[j].value, num_options, &options);
+			if(cupsGetOption(dest->options[j].name, num_options, options) == NULL)
+				num_options = cupsAddOption(dest->options[j].name, dest->options[j].value, num_options, &options);
 		}
 	}
 	/*else if (cupsLastError() == IPP_STATUS_ERROR_BAD_REQUEST ||
@@ -176,9 +176,9 @@ static int print_pdf(const char* pdf)
 	files[0] = pdf;
 	job_id = cupsPrintFiles(dest->name, 1, files, "bscand job", num_options, options);
 	if (job_id < 1)
-  {
-    fprintf(stderr, "%s\n", cupsLastErrorString());
-    return 1;
+	{
+		fprintf(stderr, "%s\n", cupsLastErrorString());
+		return 1;
 	}
 
 	cupsFreeOptions(num_options, options);
@@ -238,29 +238,29 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 	if(status != SANE_STATUS_GOOD)
 	{
 		fprintf (stderr, "setting of option resolution failed (%s)\n", sane_strstatus(status));
-    return 1;
-  }
+		return 1;
+	}
 
 	strcpy(tmp_mode, mode);
 	status = sane_control_option(device, scan_mode_idx, SANE_ACTION_SET_VALUE, tmp_mode, &info);
 	if(status != SANE_STATUS_GOOD)
 	{
 		fprintf (stderr, "setting of option mode failed (%s)\n", sane_strstatus(status));
-    return 1;
-  }
+		return 1;
+	}
 
 	status = sane_start (device);
 	if(status != SANE_STATUS_GOOD)
 	{
 		fprintf(stderr, "sane_start: %s\n", sane_strstatus(status));
-	  return 1;
+		return 1;
 	}
 	
 	status = sane_get_parameters(device, &parm);
 	if(status != SANE_STATUS_GOOD)
 	{
 		fprintf (stderr, "sane_get_parameters: %s\n", sane_strstatus(status));
-	  ret = 1;
+		ret = 1;
 		goto ret_err;
 	}
 	ofp = fopen(out_tiff, "wb");
@@ -441,7 +441,7 @@ static struct s_btn_action* find_button(const char* name)
 			return btn_list+i;
 	}
 
-	fprintf(stderr, "Buton '%s' not found\n", name);
+	fprintf(stderr, "Button '%s' not found\n", name);
 	return NULL;
 }
 
@@ -728,8 +728,8 @@ static void scan_buttons(const char* devname)
 }
 
 static void auth_callback( SANE_String_Const res,
-	                         SANE_Char *username,
-	                         SANE_Char *password)
+                           SANE_Char *username,
+                           SANE_Char *password)
 {
 	printf("Auth callback not implemented!!\n");
 	memset (username, 0, SANE_MAX_USERNAME_LEN);
@@ -802,91 +802,91 @@ int parse_config_file(const char* cfg_file)
 		ret = 1;
 		goto error_exit;
 	}
-  for(;len>0; len--)
-  {
-    elem = config_setting_get_elem(btn, len-1);
-    if(elem == NULL)
-    {
-      fprintf(stderr, "Error: %s\n", config_error_text(&cfg));
-      ret = 1;
-      goto error_exit;
-    }
+	for(;len>0; len--)
+	{
+		elem = config_setting_get_elem(btn, len-1);
+		if(elem == NULL)
+		{
+			fprintf(stderr, "Error: %s\n", config_error_text(&cfg));
+			ret = 1;
+			goto error_exit;
+		}
 
-    if(config_setting_lookup_string(elem, "name", &str) == CONFIG_FALSE)
-    {
-      fprintf(stderr, "No button name specified\n");
-      ret = 1;
-      goto error_exit;
-    }
-    btn_list[len-1].name = strdup(str);
-    printf("Button '%s':\n", str);
-    if(config_setting_lookup_string(elem, "action", &str) == CONFIG_FALSE)
-    {
-      fprintf(stderr, "No button action specified\n");
-      ret = 1;
-      goto error_exit;
-    }
-    printf("  Action: %s\n", str);
-    if(!strcmp(str, "print"))
-    {
-      btn_list[len-1].action = BTN_ACTION_PRINT;
-    }
-    else if(!strcmp(str, "none"))
-    {
-      btn_list[len-1].action = BTN_ACTION_NONE;
-    }
-    else if(!strcmp(str, "scan"))
-    {
-      btn_list[len-1].action = BTN_ACTION_SCAN;
-    }
-    else if(!strcmp(str, "pdf"))
-    {
-      btn_list[len-1].action = BTN_ACTION_PDF;
-    }
-    else if(!strcmp(str, "append"))
-    {
-      btn_list[len-1].action = BTN_ACTION_APPEND;
-    }
-    else
-    {
-      fprintf(stderr, "Unknown action '%s'\n", str);
-    }
+		if(config_setting_lookup_string(elem, "name", &str) == CONFIG_FALSE)
+		{
+			fprintf(stderr, "No button name specified\n");
+			ret = 1;
+			goto error_exit;
+		}
+		btn_list[len-1].name = strdup(str);
+		printf("Button '%s':\n", str);
+		if(config_setting_lookup_string(elem, "action", &str) == CONFIG_FALSE)
+		{
+			fprintf(stderr, "No button action specified\n");
+			ret = 1;
+			goto error_exit;
+		}
+		printf("  Action: %s\n", str);
+		if(!strcmp(str, "print"))
+		{
+			btn_list[len-1].action = BTN_ACTION_PRINT;
+		}
+		else if(!strcmp(str, "none"))
+		{
+			btn_list[len-1].action = BTN_ACTION_NONE;
+		}
+		else if(!strcmp(str, "scan"))
+		{
+			btn_list[len-1].action = BTN_ACTION_SCAN;
+		}
+		else if(!strcmp(str, "pdf"))
+		{
+			btn_list[len-1].action = BTN_ACTION_PDF;
+		}
+		else if(!strcmp(str, "append"))
+		{
+			btn_list[len-1].action = BTN_ACTION_APPEND;
+		}
+		else
+		{
+			fprintf(stderr, "Unknown action '%s'\n", str);
+		}
 
-    str = NULL;
+		str = NULL;
 		if(config_setting_lookup_string(elem, "mode", &str) == CONFIG_FALSE)
-    {
+		{
 			str = "gray";
-    }
-	  if(!strcmp(str, "color"))
+		}
+		if(!strcmp(str, "color"))
 		{
 			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_COLOR;
 		}
 		if(!strcmp(str, "gray"))
-    {
+		{
 			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_GRAY;
-    }
-    else
-    {
-      fprintf(stderr, "Unknown mode '%s'\n", str);
-    }
+		}
+		else
+		{
+			fprintf(stderr, "Unknown mode '%s'\n", str);
+		}
 
 		if(config_setting_lookup_int(elem, "resolution", &val) == CONFIG_FALSE)
-    {
+		{
 			val = 300;
-    }
-	  btn_list[len-1].resolution = val;
-    
-		str = NULL;
-		config_setting_lookup_string(elem, "folder", &str);
-    if(str)
-      btn_list[len-1].folder = strdup(str);
+		}
+		  btn_list[len-1].resolution = val;
+
+			str = NULL;
+			config_setting_lookup_string(elem, "folder", &str);
+		if(str)
+		  btn_list[len-1].folder = strdup(str);
 		if((btn_list[len-1].action == BTN_ACTION_SCAN) && (str == NULL))
 		{
 			fprintf(stderr, "folder option must be set when using action='scan'\n");
 			ret = 1;
 			goto error_exit;
 		}
-  }
+	}
 
 error_exit:
   config_destroy(&cfg);
