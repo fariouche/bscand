@@ -1,0 +1,170 @@
+--- a/frontend/saned.c	2018-01-27 17:24:42.984294505 +0100
++++ b/frontend/saned.c	2018-01-27 17:32:37.048260976 +0100
+@@ -253,6 +253,7 @@
+ static int debug;
+ static int run_mode;
+ static sem_t* sem = SEM_FAILED;
++static int data_timeout = 4000;
+ static Handle *handle;
+ static char *bind_addr;
+ static union
+@@ -1764,6 +1765,7 @@
+ 		      DBG (DBG_ERR, "do_scan: write failed (%s)\n",
+ 			   strerror (errno));
+ 		      status = SANE_STATUS_CANCELLED;
++		      handle[h].docancel = 1;
+ 		      break;
+ 		    }
+ 		  bytes_in_buf -= nwritten;
+@@ -1829,13 +1831,19 @@
+ 	{
+ 	  DBG (DBG_MSG,
+ 	       "do_scan: processing RPC request on fd %d\n", w->io.fd);
+-	  process_request (w);
++	  if(process_request (w) < 0)
++	    handle[h].docancel = 1;
++
+ 	  if (handle[h].docancel)
+ 	    break;
+ 	}
+     }
+   while (status == SANE_STATUS_GOOD || bytes_in_buf > 0 || status_dirty);
+   DBG (DBG_MSG, "do_scan: done, status=%s\n", sane_strstatus (status));
++
++  if(handle[h].docancel)
++    sane_cancel (handle[h].handle);
++
+   handle[h].docancel = 0;
+   handle[h].scanning = 0;
+ }
+@@ -2114,7 +2122,7 @@
+     case SANE_NET_START:
+       {
+ 	SANE_Start_Reply reply;
+-	int fd = -1, data_fd;
++	int fd = -1, data_fd = -1;
+ 
+ 	h = decode_handle (w, "start");
+ 	if (h < 0)
+@@ -2139,9 +2147,35 @@
+ 	    char text_addr[64];
+ 	    int len;
+ 	    int error;
+-
+-	    DBG (DBG_MSG, "process_request: waiting for data connection\n");
+-	    data_fd = accept (fd, 0, 0);
++	    struct pollfd fds[1];
++			int ret;
++			
++			fds->fd = fd;
++  		fds->events = POLLIN;
++
++	    DBG (DBG_MSG, "process_request: waiting %dms for data connection\n", data_timeout);
++	    if(data_timeout)
++	    {
++	    	while (1)
++	    	{
++      		ret = poll (fds, 1, data_timeout);
++      		if (ret < 0)
++	    		{
++	    			if (errno == EINTR)
++	    				continue;
++	    			else
++	    			{
++	      			DBG (DBG_ERR, "run_standalone: poll failed: %s\n", strerror (errno));
++	    			}
++						break;
++	    		}
++					break;
++	    	}
++	    }
++	    else
++	      ret = 0;
++	    if(ret >= 0)
++		    data_fd = accept (fd, 0, 0);
+ 	    close (fd);
+ 
+ 	    /* Get address of remote host */
+@@ -2181,9 +2215,36 @@
+ 	  {
+ 	    struct sockaddr_in sin;
+ 	    int len;
++	    int ret;
++	    struct pollfd fds[1];
++			
++	    fds->fd = fd;
++	    fds->events = POLLIN;
++
++	    DBG (DBG_MSG, "process_request: waiting %dms for data connection\n", data_timeout);
++	    if(data_timeout)
++	    {
++	    	while (1)
++	    	{
++      		ret = poll (fds, 1, data_timeout);
++      		if (ret < 0)
++	    		{
++	    			if (errno == EINTR)
++	    				continue;
++	    			else
++	    			{
++	      			DBG (DBG_ERR, "run_standalone: poll failed: %s\n", strerror (errno));
++	    			}
++						break;
++	    		}
++					break;
++	    	}
++	    }
++	    else
++	      ret = 0;
++	    if(ret >= 0)
++		    data_fd = accept (fd, 0, 0);
+ 
+-	    DBG (DBG_MSG, "process_request: waiting for data connection\n");
+-	    data_fd = accept (fd, 0, 0);
+ 	    close (fd);
+ 
+ 	    /* Get address of remote host */
+@@ -2794,7 +2855,27 @@
+                   DBG (DBG_INFO, "read_config: data port range: %d - %d\n", data_port_lo, data_port_hi);
+                 }
+             }
+-        }
++            else if(strstr(config_line, "data_connect_timeout") != NULL)
++            {
++              optval = sanei_config_skip_whitespace (++optval);
++              if ((optval != NULL) && (*optval != '\0'))
++              {
++                val = strtol (optval, &endval, 10);
++                if (optval == endval)
++                {
++                  DBG (DBG_ERR, "read_config: invalid value for data_connect_timeout\n");
++                  continue;
++                }
++                else if ((val < 0) || (val > 65535))
++                {
++                  DBG (DBG_ERR, "read_config: data_connect_timeout is invalid\n");
++                  continue;
++                }
++                data_timeout = val;
++                DBG (DBG_INFO, "read_config: data connect timeout: %d\n", data_timeout);
++              }
++            }
++      }
+       fclose (fp);
+       DBG (DBG_INFO, "read_config: done reading config\n");
+     }
+--- a/doc/saned.man	2017-05-15 03:19:11.000000000 +0200
++++ b/doc/saned.man	2018-01-27 17:35:17.122249654 +0100
+@@ -93,6 +93,12 @@
+ server is sitting behind a firewall. If that firewall is a Linux
+ machine, we strongly recommend using the Netfilter
+ \fInf_conntrack_sane\fP module instead.
++\fBdata_connect_timeout\fP = \fItimeout milliseconds\fP
++Specify the time in milliseconds that saned will wait for a data 
++connection. Whithout this option, if the data connection is not done 
++before the scanner reach the end of scan, the scanner will continue
++to scan past the end and may damage it depending on the backend.
++Specify zero to have the old behavior. Default is 4000ms.
+ .PP
+ The access list is a list of host names, IP addresses or IP subnets
+ (CIDR notation) that are permitted to use local SANE devices. IPv6
