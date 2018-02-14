@@ -458,7 +458,7 @@ static char* generate_filename(const char* folder, const char* ext)
 		fprintf(stderr, "folder is not specified\n");
 		return NULL;
 	}
-
+	tmp = time(NULL);
 	t = localtime(&tmp);
 
 	ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d.%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ext);
