@@ -861,9 +861,13 @@ int parse_config_file(const char* cfg_file)
 		{
 			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_COLOR;
 		}
-		if(!strcmp(str, "gray"))
+		else if(!strcmp(str, "gray"))
 		{
 			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_GRAY;
+		}
+		else if(!strcmp(str, "lineart"))
+		{
+			btn_list[len-1].mode = SANE_VALUE_SCAN_MODE_LINEART;
 		}
 		else
 		{
