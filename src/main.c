@@ -970,6 +970,7 @@ int main(int argc, char** argv)
 	if(sem == SEM_FAILED)
 		fprintf(stderr, "cannot open or create semaphore 'saned.open.sem' - %s\n", strerror(errno));
 
+retry:
 	
 	status = sane_get_devices (&device_list, SANE_FALSE);
 	if (status != SANE_STATUS_GOOD)
@@ -993,15 +994,20 @@ int main(int argc, char** argv)
 	{
 
 		fprintf(stderr, "network sane server not found\n");
-		sane_exit();
-		return -1;
+		usleep(5000000);
+		goto retry;
+		//sane_exit();
+		//return -1;
 	}
 
 	printf("Found device '%s'\n", device_list[i]->name);
 
-
 	
 	scan_buttons(device_list[i]->name);
+	usleep(5000000);
+	
+	goto retry;
+
 	sane_exit();
 	if(sem != SEM_FAILED)
 		sem_close(sem);
