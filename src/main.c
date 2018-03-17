@@ -34,10 +34,10 @@
 #define STRIP_HEIGHT	256
 
 #ifdef ENABLE_IPV6
-#define NET_PREFIX "net:[::1]:"
-#else
-#define NET_PREFIX "net:127.0.0.1:"
+#define NET_PREFIX6 "net:[::1]:"
 #endif
+#define NET_PREFIX4 "net:127.0.0.1:"
+
 
 typedef struct
 {
@@ -986,7 +986,11 @@ retry:
 		/*printf("device `%s' is a %s %s %s\n",
 			        device_list[i]->name, device_list[i]->vendor,
 			        device_list[i]->model, device_list[i]->type);*/
-		if(strncmp(NET_PREFIX, device_list[i]->name, strlen(NET_PREFIX)) == 0)
+#ifdef ENABLE_IPV6
+		if(strncmp(NET_PREFIX6, device_list[i]->name, strlen(NET_PREFIX6)) == 0)
+			break;
+#endif
+		if(strncmp(NET_PREFIX4, device_list[i]->name, strlen(NET_PREFIX4)) == 0)
 			break;
 	}
 
