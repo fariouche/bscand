@@ -464,7 +464,7 @@ static char* generate_filename(const char* folder, const char* ext)
 	tmp = time(NULL);
 	t = localtime(&tmp);
 
-	ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d.%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ext);
+	ret = asprintf(&file_name, "%s/scan_%04d%02d%02d_%01d%02d%02d.%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, ext);
 	if(ret < 0)
 	{
 		fprintf(stderr, "Out of memory\n");
@@ -476,7 +476,7 @@ static char* generate_filename(const char* folder, const char* ext)
 			break;
 
 		free(file_name);
-		ret = asprintf(&file_name, "%s/scan_%d%d%d_%d%d%d(%d).%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, i, ext);
+		ret = asprintf(&file_name, "%s/scan_%04d%02d%02d_%02d%02d%02d(%d).%s", folder, t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec, i, ext);
 		if(ret < 0)
 		{
 			fprintf(stderr, "Out of memory\n");
