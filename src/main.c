@@ -927,7 +927,7 @@ int main(int argc, char** argv)
 	const char* cfg_file;
 	/*char* tmp_name;*/
 
-	printf("starting...\n");
+	printf("bscand version 1.0.0\n");
 
 #ifdef SIGHUP
 	signal(SIGHUP, sighandler);
