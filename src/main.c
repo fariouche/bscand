@@ -67,12 +67,15 @@ struct s_btn_action
 	const char* folder;
 	int btn_index;
 };
+
+#define OPT_DISABLE_DYNAMIC_LINEART "disable-dynamic-lineart"
 #define MAX_BTN 16
 static struct s_btn_action btn_list[MAX_BTN] = {0};
 static SANE_Handle device = NULL;
 static int reset = 0;
 static int scan_resolution_idx = -1;
 static int scan_mode_idx = -1;
+static int hw_lineart_idx = -1;
 static sem_t* sem = SEM_FAILED;
 
 static int append_to_tiff(const char* in_tiff, const char* out_tiff)
@@ -630,6 +633,11 @@ static void scan_buttons(const char* devname)
 		{
 			scan_resolution_idx = i;
 		}
+		else if((opt->type == SANE_TYPE_BOOL) &&
+		        (strcmp (opt->name, OPT_DISABLE_DYNAMIC_LINEART) == 0))
+		{
+			hw_lineart_idx = i;
+		}
 		
 	}
 	if(num_buttons == 0)
@@ -654,6 +662,19 @@ static void scan_buttons(const char* devname)
 	buttons = (int*)malloc(num_buttons * sizeof(*buttons));
 	memset(buttons, 0, num_buttons * sizeof(*buttons));
 
+	if(hw_lineart_idx != -1)
+	{
+		SANE_Word bool_val;
+		SANE_Int info = 0;
+		bool_val = 1;
+		
+		status = sane_control_option(device, hw_lineart_idx, SANE_ACTION_SET_VALUE, &bool_val, &info);
+		if(status != SANE_STATUS_GOOD)
+		{
+			fprintf (stderr, "setting of option hw lineart failed (%s) - maybe the scanner does not support it, ignoring\n", sane_strstatus(status));
+		}
+	}
+	
 	while(1)
 	{
 		while(1)
