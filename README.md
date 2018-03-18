@@ -19,7 +19,7 @@ All the **sane backends** are supported. No complex modifications needed.
 Build:
 ------
 
-* Apply the two patches to sane backend source code (sane backends 1.0.25)
+* Apply the two patches to sane backend source code (sane backends 1.0.25 or 1.0.27)
 * You need:
   * libcups2-dev
   * libconfig-dev
@@ -30,7 +30,7 @@ Build:
 * make install
 
 
-Then just modify the config file to suite your need (possible actions: Append to tiif, create pdf, print/copy, scan to folder)
+Then just modify the config file to suite your need (possible actions: Append to tiff, create pdf, print/copy using the default cups printer, scan to folder)
 
 Then launch the daemon:
 
