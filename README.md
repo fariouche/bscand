@@ -2,17 +2,18 @@
 Simple sane button scanner
 --------------------------
 
-**scanbd** is mainly a fork of the saned frontend. I needed the latest backends and scnabd didn't include it yet. Plus the fact that the configuration was not easy.
+**scanbd** is mainly a fork of the saned frontend. I needed the latest backends and scanbd didn't include it yet. Plus the fact that the configuration was not easy.
 
-I've seen too late an other project, **insaned**.  This one does not support multiple conccurrent access to the scanner and does not use the net backend. Concurrent access is not easy when not using the net backend.
+I've seen too late an other project, **insaned**.  This one does not support multiple concurrent access to the scanner and does not use the net backend. Concurrent access is not easy when not using the net backend.
 
 
 This project is meant to be simpler than the other projects:
 
 1. a patch to saned, to enable concurrent access. I hope it will be accepted by the sane developers.
 2. a daemon, using the net backend and the standard sane APIs.
+3. All **sane** tools (xsane, scanimage etc) are still working while **bscand** is running in background.
 
-All the sane backends are supported. No complex modifications needed.
+All the **sane backends** are supported. No complex modifications needed.
 
 
 Build:
