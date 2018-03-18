@@ -237,6 +237,19 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 	int ret = 0;
 	char tmp_mode[8]={0};
 
+	if(hw_lineart_idx != -1)
+	{
+		SANE_Bool bool_val;
+		info = 0;
+		bool_val = 1;
+		
+		status = sane_control_option(device, hw_lineart_idx, SANE_ACTION_SET_VALUE, &bool_val, &info);
+		if(status != SANE_STATUS_GOOD)
+		{
+			fprintf (stderr, "setting of option hw lineart failed (%s) - maybe the scanner does not support it, ignoring\n", sane_strstatus(status));
+		}
+	}
+	
 	status = sane_control_option(device, scan_resolution_idx, SANE_ACTION_SET_VALUE, &resolution_value, &info);
 	if(status != SANE_STATUS_GOOD)
 	{
@@ -245,12 +258,14 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 	}
 
 	strcpy(tmp_mode, mode);
+	printf("setting mode %s\n", mode);
 	status = sane_control_option(device, scan_mode_idx, SANE_ACTION_SET_VALUE, tmp_mode, &info);
 	if(status != SANE_STATUS_GOOD)
 	{
 		fprintf (stderr, "setting of option mode failed (%s)\n", sane_strstatus(status));
 		return 1;
 	}
+	
 
 	status = sane_start (device);
 	if(status != SANE_STATUS_GOOD)
@@ -659,21 +674,13 @@ static void scan_buttons(const char* devname)
 		return;
 	}
 	printf("found %d buttons\n", num_buttons);
+	if(hw_lineart_idx != -1)
+		printf("found %s at index %d\n", OPT_DISABLE_DYNAMIC_LINEART, hw_lineart_idx);
+		
 	buttons = (int*)malloc(num_buttons * sizeof(*buttons));
 	memset(buttons, 0, num_buttons * sizeof(*buttons));
 
-	if(hw_lineart_idx != -1)
-	{
-		SANE_Word bool_val;
-		SANE_Int info = 0;
-		bool_val = 1;
-		
-		status = sane_control_option(device, hw_lineart_idx, SANE_ACTION_SET_VALUE, &bool_val, &info);
-		if(status != SANE_STATUS_GOOD)
-		{
-			fprintf (stderr, "setting of option hw lineart failed (%s) - maybe the scanner does not support it, ignoring\n", sane_strstatus(status));
-		}
-	}
+	
 	
 	while(1)
 	{
