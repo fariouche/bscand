@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <linux/kd.h>
+#include <linux/input.h>
 #include <sane/sane.h>
 #include <sane/saneopts.h>
 #include <cups/cups.h>
@@ -33,11 +35,12 @@
 
 #define STRIP_HEIGHT	256
 
-#ifdef ENABLE_IPV6
 #define NET_PREFIX6 "net:[::1]:"
-#endif
 #define NET_PREFIX4 "net:127.0.0.1:"
 
+#ifndef CLOCK_TICK_RATE
+#define CLOCK_TICK_RATE 1193180
+#endif
 
 typedef struct
 {
@@ -76,7 +79,58 @@ static int reset = 0;
 static int scan_resolution_idx = -1;
 static int scan_mode_idx = -1;
 static int hw_lineart_idx = -1;
+static int beep_freq = 0;
+static int beep_duration = 0;
+static char* server_ip = NULL;
 static sem_t* sem = SEM_FAILED;
+
+static int do_beep(int fd, int freq)
+{
+	struct input_event e;
+
+	e.type = EV_SND;
+	e.code = SND_TONE;
+	e.value = freq;
+
+	if(write(fd, &e, sizeof(struct input_event)) < 0) 
+	{
+		int period = (freq != 0 ? (int)(CLOCK_TICK_RATE/freq) : freq);
+		
+		fprintf(stderr, "EV_SND error %d (%s)", errno, strerror(errno));
+		
+		if(ioctl(fd, KIOCSOUND, period) < 0) 
+		{
+			fprintf(stderr, "KIOCSOUND error %d (%s)", errno, strerror(errno));
+			return -1;
+		}
+
+		return -1;
+	}
+
+	return 0;
+}
+
+static int beep(int freq, int duration)
+{
+	int fd;
+	int i;
+	
+	fd = open("/dev/tty0", O_WRONLY);
+	if(fd == -1)
+	{
+		fprintf(stderr,"cannot open tty0");
+		return -1;
+	}
+	
+	do_beep(fd, freq);
+	usleep(1000*duration);
+	do_beep(fd, 0);
+
+	close(fd);
+
+	return 0;
+}
+
 
 static int append_to_tiff(const char* in_tiff, const char* out_tiff)
 {
@@ -519,11 +573,15 @@ static void do_action(const char* button_name)
 	switch(btn->action)
 	{
 		case BTN_ACTION_APPEND:
+			if(beep_freq)
+				beep(beep_freq, beep_duration);
 			do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
 			append_to_tiff("/tmp/bscand.out.tiff", "/tmp/bscand_tmp.out.tiff");
 		break;
 
 		case BTN_ACTION_PDF:
+			if(beep_freq)
+				beep(beep_freq, beep_duration);
 			if(access("/tmp/bscand_tmp.out.tiff", F_OK) == 0)
 			{
 				char* file_name;
@@ -537,6 +595,8 @@ static void do_action(const char* button_name)
 		break;
 
 		case BTN_ACTION_PRINT:
+			if(beep_freq)
+				beep(beep_freq, beep_duration);
 			if(access("/tmp/scan.pdf", F_OK))
 			{
 				do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
@@ -550,7 +610,8 @@ static void do_action(const char* button_name)
 		case BTN_ACTION_SCAN:
 		{
 			char* file_name;
-
+			if(beep_freq)
+				beep(beep_freq, beep_duration);
 			if(btn->folder == NULL)
 			{
 				fprintf(stderr, "folder is not specified in the config file, ignoring action\n");
@@ -743,6 +804,7 @@ static void scan_buttons(const char* devname)
 				if((buttons[b] != val) && (val == 0))
 				{
 					printf("button '%s' released\n", opt->name);
+					
 					do_action(opt->name);
 				}
 				buttons[b] = val;
@@ -816,6 +878,29 @@ int parse_config_file(const char* cfg_file)
 		ret = 1;
 		goto error_exit;
 	}
+	
+	elem = config_lookup(&cfg, "config");
+	if(elem)
+	{
+		if(config_setting_lookup_int(elem, "beep_freq", &val) == CONFIG_FALSE)
+			beep_freq = 0;
+		else
+			beep_freq = val;
+
+		if(config_setting_lookup_int(elem, "beep_duration", &val) == CONFIG_FALSE)
+			beep_duration = 0;
+		else
+			beep_duration = val;
+		
+		if(config_setting_lookup_string(elem, "sane_server", &str) == CONFIG_FALSE)
+		{
+			str = "127.0.0.1";
+		}
+		if(asprintf(&server_ip, "net:%s:", str) <= 0)
+			server_ip = strdup(NET_PREFIX4);
+		
+	}
+	
 	btn = config_lookup(&cfg, "buttons");
 	if(!btn)
 	{
@@ -1004,7 +1089,7 @@ retry:
 	if(device_list[i] == NULL)
 	{
 
-		fprintf(stderr, "network sane server not found\n");
+		fprintf(stderr, "network sane server '%s' not found\n", server_ip);
 		usleep(5000000);
 		goto retry;
 		//sane_exit();
@@ -1022,5 +1107,9 @@ retry:
 	sane_exit();
 	if(sem != SEM_FAILED)
 		sem_close(sem);
+	
+	if(server_ip)
+		free(server_ip);
+		
 	return 0;
 }
