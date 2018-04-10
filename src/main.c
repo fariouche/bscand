@@ -86,25 +86,32 @@ static sem_t* sem = SEM_FAILED;
 
 static int do_beep(int fd, int freq)
 {
-	struct input_event e;
 
-	e.type = EV_SND;
-	e.code = SND_TONE;
-	e.value = freq;
+	
+	if(ioctl(fd, EVIOCGSND(0)) != -1)
+	{
+		struct input_event e;
+		
+		e.type = EV_SND;
+		e.code = SND_TONE;
+		e.value = freq;
 
-	if(write(fd, &e, sizeof(struct input_event)) < 0) 
+		if(write(fd, &e, sizeof(struct input_event)) < 0) 
+		{
+			fprintf(stderr, "EV_SND error %d (%s)", errno, strerror(errno));
+			return -1;
+		}
+	}
+	else
 	{
 		int period = (freq != 0 ? (int)(CLOCK_TICK_RATE/freq) : freq);
 		
-		fprintf(stderr, "EV_SND error %d (%s)", errno, strerror(errno));
 		
 		if(ioctl(fd, KIOCSOUND, period) < 0) 
 		{
 			fprintf(stderr, "KIOCSOUND error %d (%s)", errno, strerror(errno));
 			return -1;
 		}
-
-		return -1;
 	}
 
 	return 0;
@@ -121,6 +128,7 @@ static int beep(int freq, int duration)
 		fprintf(stderr,"cannot open tty0");
 		return -1;
 	}
+	
 	
 	do_beep(fd, freq);
 	usleep(1000*duration);
