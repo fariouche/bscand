@@ -581,15 +581,11 @@ static void do_action(const char* button_name)
 	switch(btn->action)
 	{
 		case BTN_ACTION_APPEND:
-			if(beep_freq)
-				beep(beep_freq, beep_duration);
 			do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
 			append_to_tiff("/tmp/bscand.out.tiff", "/tmp/bscand_tmp.out.tiff");
 		break;
 
 		case BTN_ACTION_PDF:
-			if(beep_freq)
-				beep(beep_freq, beep_duration);
 			if(access("/tmp/bscand_tmp.out.tiff", F_OK) == 0)
 			{
 				char* file_name;
@@ -603,8 +599,6 @@ static void do_action(const char* button_name)
 		break;
 
 		case BTN_ACTION_PRINT:
-			if(beep_freq)
-				beep(beep_freq, beep_duration);
 			if(access("/tmp/scan.pdf", F_OK))
 			{
 				do_scan("/tmp/bscand.out.tiff", btn->resolution, btn->mode);
@@ -618,8 +612,6 @@ static void do_action(const char* button_name)
 		case BTN_ACTION_SCAN:
 		{
 			char* file_name;
-			if(beep_freq)
-				beep(beep_freq, beep_duration);
 			if(btn->folder == NULL)
 			{
 				fprintf(stderr, "folder is not specified in the config file, ignoring action\n");
@@ -811,9 +803,18 @@ static void scan_buttons(const char* devname)
 				sane_control_option (device, i, SANE_ACTION_GET_VALUE, &val, 0);
 				if((buttons[b] != val) && (val == 0))
 				{
-					printf("button '%s' released\n", opt->name);
-					
-					do_action(opt->name);
+					if(val == 0)
+					{
+						printf("button '%s' released\n", opt->name);
+						do_action(opt->name);
+					}
+					else
+					{
+						struct s_btn_action* btn;
+						btn = find_button(opt->name);
+						if(btn && (btn->action != BTN_ACTION_NONE )&& beep_freq)
+							beep(beep_freq, beep_duration);
+					}
 				}
 				buttons[b] = val;
 				b++;
