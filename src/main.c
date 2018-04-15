@@ -381,11 +381,11 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 					else
 					{
 						sanei_write_tiff_header(parm.format, parm.pixels_per_line, parm.lines, parm.depth, resolution_value, NULL, ofp);
-			  	}
+					}
 				break;
 
 				default:
-					break;
+				break;
 			}
 
 			if(must_buffer)
@@ -458,8 +458,8 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 								goto ret_err;
 							}
 						}
-		  			offset += len;
-		  		break;
+						offset += len;
+					break;
 
 					case SANE_FRAME_GRAY:
 						for(i = 0; i < len; ++i)
@@ -475,11 +475,11 @@ static int do_scan(const char* out_tiff, int resolution_value, const char* mode)
 					break;
 
 					default:
-		  		break;
+					break;
 				}
-	    }
-	  	else			/* ! must_buffer */
-	    {
+			}
+			else/* ! must_buffer */
+			{
 				fwrite(buffer, 1, len, ofp);
 			}
 		}
@@ -801,7 +801,7 @@ static void scan_buttons(const char* devname)
 					break;
 				}
 				sane_control_option (device, i, SANE_ACTION_GET_VALUE, &val, 0);
-				if((buttons[b] != val) && (val == 0))
+				if(buttons[b] != val)
 				{
 					if(val == 0)
 					{
